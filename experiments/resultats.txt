@@ -1,0 +1,11 @@
+Observations : 450
+Itérations : 2
+Inertie finale : 447.520831
+Centres :
+[[ 0.18323003  3.20263703]
+ [-3.01414166 -2.03481625]
+ [ 3.55370994 -0.86241051]]
+Inerties k=1..8 : [5950.024, 2538.877, 447.521, 370.543, 301.397, 252.985, 227.246, 200.554]
+Inertie sklearn : 447.520831
+ARI vs sklearn : 1.000000
+ARI vs classes génératrices : 1.000000
