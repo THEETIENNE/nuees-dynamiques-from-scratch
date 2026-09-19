@@ -1,0 +1,415 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[provide=*,french]{babel}
+\usepackage{lmodern}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{float}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{microtype}
+\usepackage{enumitem}
+\definecolor{bleu}{HTML}{145DA0}
+\definecolor{vert}{HTML}{2A9D8F}
+\hypersetup{colorlinks=true,linkcolor=bleu,citecolor=vert,urlcolor=bleu,
+  pdftitle={Implémentation de l'algorithme des nuées dynamiques},
+  pdfauthor={KABONGO TSHIATA ETIENNE}}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Science des données -- M1 IA}
+\rhead{Nuées dynamiques}
+\cfoot{\thepage}
+\setlength{\headheight}{15pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.55em}
+\lstset{language=Python,basicstyle=\ttfamily\small,keywordstyle=\color{bleu}\bfseries,
+  commentstyle=\color{vert},stringstyle=\color{orange!60!black},frame=single,
+  breaklines=true,showstringspaces=false,numbers=left,numberstyle=\tiny,
+  xleftmargin=1.5em,framexleftmargin=1em}
+
+\begin{document}
+\begin{titlepage}
+  \centering
+  {\large UNIVERSITÉ DE KINSHASA\par}
+  \vspace{0.4cm}
+  {\large Master 1 -- Intelligence Artificielle\par}
+  \vfill
+  {\color{bleu}\rule{\textwidth}{1.4pt}\par}
+  \vspace{0.5cm}
+  {\Huge\bfseries Implémentation générale de la méthode des nuées dynamiques\par}
+  \vspace{0.35cm}
+  {\LARGE From scratch en Python\par}
+  \vspace{0.5cm}
+  {\color{bleu}\rule{\textwidth}{1.4pt}\par}
+  \vfill
+  \begin{tabular}{>{\bfseries}p{4.2cm}p{8cm}}
+    Étudiant : & KABONGO TSHIATA ETIENNE\\
+    Niveau : & M1 IA\\
+    Cours : & Science des données\\
+    Sujet : & Implémentation de l'algorithme des nuées dynamiques (from scratch)\\
+    Année académique : & 2025--2026
+  \end{tabular}
+  \vfill
+  {\large Kinshasa, septembre 2026\par}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\section{Introduction}
+L'apprentissage non supervisé cherche à extraire une structure à partir de
+données qui ne possèdent pas d'étiquette connue. Parmi ses tâches centrales,
+la classification automatique (\emph{clustering}) consiste à constituer des
+groupes homogènes : les observations d'un même groupe doivent être proches,
+tandis que celles de groupes différents doivent être éloignées.
+
+La méthode des nuées dynamiques a été proposée par Edwin Diday en
+1971~\cite{diday1971}. Elle alterne une phase de représentation des classes et
+une phase d'affectation selon un critère d'adéquation. Sa portée est plus
+générale que celle des $k$-means : une classe peut être représentée par un
+point, plusieurs points, des axes factoriels, une distribution ou une structure
+adaptée au problème. Les travaux de MacQueen~\cite{macqueen1967} et de
+Lloyd~\cite{lloyd1982} correspondent au cas particulier des centroïdes.
+
+Ce travail présente les fondements mathématiques, une implémentation générale
+en Python, une interface de sélection et une expérimentation reproductible. Les
+représentations, adéquations, affectations et critères d'arrêt sont programmés
+directement.
+
+\section{Problématique et objectifs}
+Soit une matrice $X\in\mathbb{R}^{n\times p}$. Comment partitionner ses
+observations sans imposer que chaque classe soit résumée par un unique
+centroïde ? L'enjeu est de construire un moteur commun qui adapte la
+représentation des nuées à la géométrie des données.
+
+Les objectifs spécifiques sont :
+\begin{itemize}[itemsep=2pt]
+  \item formaliser le problème d'optimisation et les étapes de l'algorithme ;
+  \item coder toutes les opérations fondamentales sans KMeans externe ;
+  \item gérer les classes vides et les initialisations défavorables ;
+  \item observer la convergence et apprécier le choix de $k$ ;
+  \item vérifier séparément la cohérence des résultats avec une référence.
+\end{itemize}
+
+\section{Fondements théoriques}
+\subsection{Cadre général de Diday}
+Pour une partition $P=(C_1,\ldots,C_k)$, la méthode fait intervenir une
+fonction de représentation $g$ et une fonction d'adéquation $d$ :
+\[
+ L_j=g(C_j), \qquad z_i=\arg\min_{1\leq j\leq k}d(\mathbf{x}_i,L_j).
+\]
+Le représentant $L_j$ n'est pas nécessairement un point. L'algorithme alterne
+la construction des représentants et l'affectation jusqu'à stabilisation du
+critère $J(P,L)=\sum_i d(\mathbf{x}_i,L_{z_i})$.
+
+\begin{table}[H]
+\centering
+\caption{Représentations intégrées dans l'application.}
+\begin{tabular}{p{3cm}p{4cm}p{5.2cm}}
+\toprule
+Mode & Représentant & Critère d'adéquation\\
+\midrule
+Centroïde & moyenne $\mu_j$ & distance euclidienne au carré\\
+Points & plusieurs médoïdes & distance au prototype le plus proche\\
+Axes factoriels & centre et base principale & résidu orthogonal au sous-espace\\
+Distribution & moyenne et covariance & log-vraisemblance gaussienne négative\\
+Personnalisé & structure libre & fonction fournie par l'utilisateur\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Lorsque $L_j$ est réduit au centroïde, on retrouve les $k$-means. Ceux-ci sont
+donc un cas particulier des nuées dynamiques, et non leur définition complète.
+
+\subsection{Partition et centre de gravité}
+Une partition $P=(C_1,\ldots,C_k)$ divise l'ensemble des observations en
+classes disjointes. Pour une classe non vide $C_j$, son centre de gravité est
+la moyenne de ses observations :
+\begin{equation}
+  \boldsymbol{\mu}_j=\frac{1}{|C_j|}\sum_{\mathbf{x}_i\in C_j}\mathbf{x}_i.
+\end{equation}
+Ce centre minimise la somme des distances euclidiennes au carré aux membres de
+la classe~\cite{hastie2009}.
+
+\subsection{Distance et fonction objectif}
+La distance euclidienne entre une observation $\mathbf{x}_i$ et un centre
+$\boldsymbol{\mu}_j$ est
+\begin{equation}
+ d(\mathbf{x}_i,\boldsymbol{\mu}_j)=
+ \sqrt{\sum_{r=1}^{p}(x_{ir}-\mu_{jr})^2}.
+\end{equation}
+Comme la racine carrée est croissante, l'affectation peut employer directement
+la distance au carré. L'inertie intra-classe à minimiser vaut
+\begin{equation}\label{eq:objectif}
+ J(P,\boldsymbol{\mu})=\sum_{j=1}^{k}\sum_{\mathbf{x}_i\in C_j}
+ \left\|\mathbf{x}_i-\boldsymbol{\mu}_j\right\|_2^2.
+\end{equation}
+
+\subsection{Alternance des deux phases}
+À centres fixés, chaque observation rejoint la classe de son centre le plus
+proche :
+\begin{equation}\label{eq:affectation}
+ z_i=\underset{1\leq j\leq k}{\arg\min}\;
+ \|\mathbf{x}_i-\boldsymbol{\mu}_j\|_2^2.
+\end{equation}
+À partition fixée, les centres sont recalculés par
+\begin{equation}\label{eq:maj}
+ \boldsymbol{\mu}_j^{(t+1)}=\frac{1}{|C_j^{(t)}|}
+ \sum_{\mathbf{x}_i\in C_j^{(t)}}\mathbf{x}_i.
+\end{equation}
+Chacune de ces phases ne peut augmenter l'objectif~\eqref{eq:objectif}. Comme
+il existe un nombre fini de partitions, la procédure atteint un point fixe en
+un nombre fini d'étapes. Ce point est toutefois un optimum local, pas
+nécessairement l'optimum global.
+
+\section{Algorithme proposé}
+\subsection{Pseudo-code}
+\begin{enumerate}
+  \item choisir le type de représentation des nuées ;
+  \item construire une partition initiale à partir de points dispersés ;
+  \item calculer $L_j=g(C_j)$ pour chacune des classes ;
+  \item calculer les adéquations $d(\mathbf{x}_i,L_j)$ ;
+  \item affecter chaque individu à la représentation la plus adéquate ;
+  \item réparer une éventuelle classe vide avec un individu mal représenté ;
+  \item calculer et mémoriser le critère global ;
+  \item arrêter si la partition ou le critère se stabilise ; sinon reprendre
+        à l'étape 3 ;
+  \item répéter avec plusieurs initialisations et conserver le plus faible critère.
+\end{enumerate}
+
+\subsection{Critères d'arrêt et complexité}
+L'arrêt intervient lorsque deux partitions successives sont identiques ou que
+la variation absolue du critère devient inférieure à $\varepsilon$. Pour le
+mode centroïde et $T$ itérations, le coût dominant est $O(Tnkp)$ et la matrice
+d'adéquation occupe $O(nk)$. Le coût augmente avec le nombre de prototypes, la
+décomposition factorielle ou l'inversion des covariances selon le mode choisi.
+
+\subsection{Choix de conception}
+L'implémentation utilise une graine pseudo-aléatoire pour assurer la
+reproductibilité. Plusieurs démarrages réduisent le risque d'un mauvais optimum
+local. En cas de classe vide, un individu mal représenté est réaffecté à cette
+classe. Une méthode \texttt{predict} applique ensuite les représentations
+apprises à de nouvelles observations.
+
+\section{Implémentation générale from scratch}
+La classe \texttt{NueesDynamiques\-Generales} sépare la construction d'une
+représentation (\texttt{\_representer}) du calcul de son adéquation
+(\texttt{\_adequation}). Elle offre les modes centroïde, points, axes,
+distribution et personnalisé. Cette architecture traduit directement le cadre
+de Diday, au lieu d'assimiler toute nuée à un centre de gravité.
+
+L'interface \texttt{application.py} permet d'importer un CSV ou un fichier
+Excel, de choisir les variables numériques, $k$ et la représentation. Elle
+restitue la partition, la convergence, une projection 2D et un CSV enrichi de
+la colonne \texttt{nuee}.
+
+\subsection{Cas particulier du centroïde}
+Le cœur du calcul des distances est le suivant :
+\begin{lstlisting}
+def _distances_carre(X, centres):
+    differences = X[:, np.newaxis, :] - centres[np.newaxis, :, :]
+    return np.sum(differences * differences, axis=2)
+\end{lstlisting}
+L'affectation et l'inertie ne nécessitent ensuite que l'indice du minimum de
+chaque ligne et la somme des distances retenues :
+\begin{lstlisting}
+distances = self._distances_carre(X, centres)
+etiquettes = np.argmin(distances, axis=1)
+inertie = np.sum(distances[np.arange(X.shape[0]), etiquettes])
+\end{lstlisting}
+NumPy sert ici uniquement à représenter les tableaux et à effectuer les
+opérations arithmétiques. La logique de clustering est entièrement contenue
+dans la classe \texttt{NueesDynamiques}. Le fichier complet est fourni dans
+\texttt{src/nuees\_dynamiques.py}.
+
+\section{Protocole expérimental}
+\subsection{Jeu de données}
+Le jeu synthétique contient 450 observations bidimensionnelles, réparties en
+trois nuages gaussiens de 150 points. Leurs moyennes génératrices sont
+$(-3,-2)$, $(0{,}2,3{,}2)$ et $(3{,}6,-0{,}8)$, avec des dispersions différentes.
+Une graine fixée à 42 permet de régénérer exactement les mêmes données. Le CSV
+produit est inclus dans le projet.
+
+\subsection{Paramètres}
+L'expérience principale emploie $k=3$, au maximum 200 itérations, une tolérance
+de $10^{-6}$ et 20 initialisations. L'étude du coude compare ensuite les valeurs
+$k=1,\ldots,8$ avec 15 initialisations pour chacune.
+
+\section{Résultats et analyse}
+\subsection{Partition obtenue}
+\begin{figure}[H]
+ \centering
+ \includegraphics[width=.82\textwidth]{../figures/clusters.png}
+ \caption{Classes découvertes et centres de gravité finaux.}
+ \label{fig:clusters}
+\end{figure}
+Les trois groupes de la figure~\ref{fig:clusters} sont nettement séparés. Les
+centres calculés sont proches des moyennes génératrices :
+\[
+ (0{,}183;3{,}203),\quad(-3{,}014;-2{,}035),\quad(3{,}554;-0{,}862).
+\]
+L'ordre des classes n'a pas de signification : une permutation des indices
+décrit la même partition.
+
+\subsection{Convergence}
+\begin{figure}[H]
+ \centering
+ \includegraphics[width=.82\textwidth]{../figures/convergence.png}
+ \caption{Évolution de l'inertie de la meilleure exécution.}
+\end{figure}
+La meilleure exécution atteint une inertie de $447{,}520831$ en deux
+itérations. La décroissance puis la stabilisation observées sont conformes au
+principe d'optimisation alternée.
+
+\subsection{Choix du nombre de classes}
+\begin{figure}[H]
+ \centering
+ \includegraphics[width=.82\textwidth]{../figures/coude.png}
+ \caption{Inertie en fonction du nombre de classes.}
+\end{figure}
+Le passage de $k=2$ ($2538{,}877$) à $k=3$ ($447{,}521$) apporte un gain majeur.
+Après $k=3$, les diminutions deviennent beaucoup plus progressives. Le coude
+confirme donc le choix de trois classes pour ce jeu de données.
+
+\subsection{Validation comparative}
+La comparaison n'intervient qu'après l'exécution du code personnel. Avec les
+mêmes données, l'implémentation de référence décrite dans la documentation de
+scikit-learn~\cite{sklearn2026} obtient elle aussi une inertie de
+$447{,}520831$. L'indice de Rand ajusté (ARI) entre les deux partitions vaut
+$1{,}000$, de même que l'ARI entre notre partition et les classes génératrices.
+Cette égalité montre, pour l'expérience considérée, que les partitions sont
+identiques à une permutation des étiquettes près.
+
+\subsection{Influence de la représentation}
+\begin{figure}[H]
+ \centering
+ \includegraphics[width=.88\textwidth]{../figures/comparaison_representations.png}
+ \caption{ARI et silhouette selon la représentation choisie.}
+\end{figure}
+Sur ces groupes gaussiens compacts, le centroïde et la distribution retrouvent
+parfaitement les classes (ARI $=1$). Trois points représentatifs donnent un ARI
+proche de $0{,}929$. Le mode axial est moins pertinent (ARI proche de
+$0{,}435$), car les classes simulées sont compactes plutôt qu'organisées le
+long de droites. La flexibilité de la méthode permet précisément de comparer
+ces hypothèses et de retenir celle qui correspond aux données.
+
+\begin{table}[H]
+\centering
+\caption{Synthèse quantitative de l'expérience.}
+\begin{tabular}{lr}
+\toprule
+Indicateur & Valeur\\
+\midrule
+Nombre d'observations & 450\\
+Nombre de variables & 2\\
+Nombre de classes & 3\\
+Itérations de la meilleure exécution & 2\\
+Inertie finale & 447,520831\\
+ARI avec scikit-learn & 1,000000\\
+ARI avec les classes génératrices & 1,000000\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Application réelle au dataset Iris}
+\subsection{Données et protocole}
+Le dataset Iris, rendu célèbre par Fisher~\cite{fisher1936} et diffusé par le
+référentiel UCI~\cite{uciiris}, contient 150 fleurs : 50 \emph{setosa}, 50
+\emph{versicolor} et 50 \emph{virginica}. Chaque fleur est décrite par quatre
+mesures en centimètres : longueur et largeur du sépale, longueur et largeur du
+pétale.
+
+Les quatre variables sont standardisées avant segmentation. La colonne
+\texttt{species} est strictement exclue de l'apprentissage ; elle ne sert
+qu'après coup au calcul de l'ARI. Le nombre de nuées est fixé à trois pour
+vérifier dans quelle mesure la structure non supervisée retrouve les trois
+espèces. Chaque représentation est exécutée avec 20 initialisations.
+
+\subsection{Résultats de segmentation}
+\begin{table}[H]
+\centering
+\caption{Résultats des représentations sur Iris avec $k=3$.}
+\begin{tabular}{lrrr}
+\toprule
+Représentation & ARI & Silhouette & Itérations\\
+\midrule
+Centroïde (k-means) & 0,620 & 0,460 & 5\\
+Trois points & 0,389 & 0,309 & 3\\
+Un axe factoriel & 0,535 & 0,333 & 15\\
+Distribution gaussienne & \textbf{0,941} & 0,381 & 14\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+ \centering
+ \includegraphics[width=.88\textwidth]{../figures/iris_comparaison.png}
+ \caption{Comparaison des représentations sur Iris.}
+\end{figure}
+
+La distribution gaussienne obtient le meilleur accord avec les espèces réelles
+(ARI $=0{,}941$). Le centroïde atteint $0{,}620$. Ce gain confirme l'intérêt
+des nuées dynamiques : une classe caractérisée par une moyenne et une covariance
+peut décrire sa forme et sa dispersion, alors qu'un centroïde ne conserve qu'un
+point central.
+
+\begin{figure}[H]
+ \centering
+ \includegraphics[width=.95\textwidth]{../figures/iris_segmentation.png}
+ \caption{Projection ACP : segmentation gaussienne et espèces réelles.}
+\end{figure}
+
+La projection montre que \emph{setosa} forme un groupe très distinct. Les deux
+autres espèces se chevauchent davantage. Pour cette raison, l'indice de
+silhouette atteint son maximum global avec deux macrogroupes, tandis que la
+contrainte $k=3$ et l'ARI révèlent que la distribution gaussienne restitue très
+bien les trois espèces. Les classes réelles servent ici à l'évaluation, jamais
+à la construction des nuées.
+
+\section{Limites et pistes d'amélioration}
+L'algorithme exige que $k$ soit fixé à l'avance et reste sensible à
+l'initialisation, malgré les redémarrages. La distance euclidienne le rend plus
+adapté aux classes compactes et approximativement sphériques ; il décrit mal
+les formes non convexes. Les variables de grande échelle peuvent dominer les
+distances, d'où la nécessité de standardiser les données réelles. Enfin, les
+valeurs aberrantes déplacent les moyennes.
+
+Des extensions possibles comprennent l'initialisation $k$-means++
+\cite{arthur2007}, la standardisation automatique, l'indice de silhouette pour
+guider le choix de $k$, le traitement par mini-lots pour de grands volumes et
+la comparaison avec DBSCAN ou un clustering hiérarchique.
+
+\section{Reproductibilité et dépôt GitHub}
+Le projet contient le code, les tests, les données, les figures et les sources
+LaTeX. Après téléchargement, l'expérience s'exécute par :
+\begin{lstlisting}[language=bash,numbers=none]
+pip install -r requirements.txt
+python experiments/experimentation.py
+pytest -q
+streamlit run application.py
+\end{lstlisting}
+Le dépôt public du projet est :
+\begin{center}
+\url{https://github.com/THEETIENNE/nuees-dynamiques-from-scratch}
+\end{center}
+
+\section{Conclusion}
+Ce travail implémente les nuées dynamiques dans leur sens général. Le moteur
+alterne représentation et affectation et accepte un centroïde, plusieurs
+prototypes, un sous-espace factoriel, une distribution ou une structure
+personnalisée. L'interface rend ce choix accessible à l'utilisateur. L'étude
+montre que la représentation doit être choisie selon la géométrie des données.
+Sur Iris, la représentation gaussienne atteint un ARI de $0{,}941$ contre
+$0{,}620$ pour le centroïde. Ce résultat fournit une démonstration empirique de
+la généralité et de l'utilité du cadre proposé par Diday.
+
+\bibliographystyle{plain}
+\bibliography{references}
+\end{document}

@@ -1,0 +1,5 @@
+Dataset Iris : 150 observations, 4 variables, 3 espèces.
+Centroïde: ARI=0.620135, silhouette=0.459948, itérations=5, critère=139.820496
+3 points: ARI=0.389359, silhouette=0.309333, itérations=3, critère=67.474598
+1 axe: ARI=0.535268, silhouette=0.332984, itérations=15, critère=33.805479
+Gaussienne: ARI=0.941012, silhouette=0.380647, itérations=14, critère=-421.350252
